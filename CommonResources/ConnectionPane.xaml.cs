@@ -131,51 +131,12 @@ namespace CommonResources
             AddConnection.IsEnabled = true;
             Connections.IsEnabled = true;
 
-            foreach (var project in GetProjects())
+            foreach (var project in SharedWindow.GetProjects(_dte.Solution.Projects))
             {
                 SolutionProjectAdded(project);
             }
         }
-
-        private IEnumerable<Project> GetProjects()
-        {
-            var list = new List<Project>();
-            var item = _dte.Solution.Projects.GetEnumerator();
-
-            while (item.MoveNext())
-            {
-                var project = item.Current as Project;
-
-                if (project == null) continue;
-
-                if (project.Kind.ToUpper() == SolutionFolder)
-                    list.AddRange(GetFolderProjects(project));
-                else
-                    list.Add(project);
-            }
-
-            return list;
-        }
-
-        private static IEnumerable<Project> GetFolderProjects(Project folder)
-        {
-            var list = new List<Project>();
-
-            foreach (ProjectItem item in folder.ProjectItems)
-            {
-                var subProject = item.SubProject;
-
-                if (subProject == null) continue;
-
-                if (subProject.Kind.ToUpper() == SolutionFolder)
-                    list.AddRange(GetFolderProjects(subProject));
-                else
-                    list.Add(subProject);
-            }
-
-            return list;
-        }
-
+        
         private void SolutionProjectAdded(Project project)
         {
             //Don't want to include the VS Miscellaneous Files Project - which appears occasionally and during a diff operation

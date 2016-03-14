@@ -1,11 +1,14 @@
 ﻿using CommonResources.Models;
 using EnvDTE;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace CommonResources
 {
     public static class SharedWindow
     {
+        const string SolutionFolder = "{66A26720-8FB5-11D2-AA7E-00C04F688DDE}";
+
         public static void OpenCrmPage(string url, CrmConn selectedConnection, DTE dte)
         {
             if (selectedConnection == null) return;
@@ -27,6 +30,45 @@ namespace CommonResources
                 else //Internal VS browser
                     dte.ItemOperations.Navigate(baseUrl + url);
             }
+        }
+
+        public static IEnumerable<Project> GetProjects(Projects projects)
+        {
+            var list = new List<Project>();
+            var item = projects.GetEnumerator();
+
+            while (item.MoveNext())
+            {
+                var project = item.Current as Project;
+
+                if (project == null) continue;
+
+                if (project.Kind.ToUpper() == SolutionFolder)
+                    list.AddRange(GetFolderProjects(project));
+                else
+                    list.Add(project);
+            }
+            
+            return list.OrderBy(p => p.Name);
+        }
+
+        private static IEnumerable<Project> GetFolderProjects(Project folder)
+        {
+            var list = new List<Project>();
+
+            foreach (ProjectItem item in folder.ProjectItems)
+            {
+                var subProject = item.SubProject;
+
+                if (subProject == null) continue;
+
+                if (subProject.Kind.ToUpper() == SolutionFolder)
+                    list.AddRange(GetFolderProjects(subProject));
+                else
+                    list.Add(subProject);
+            }
+
+            return list;
         }
     }
 }

@@ -293,7 +293,7 @@ namespace SolutionPackager
                 doc.Load(path + "\\CRMDeveloperExtensions.config");
 
                 List<string> projectNames = new List<string>();
-                foreach (Project p in ConnPane.Projects)
+                foreach (Project p in SharedWindow.GetProjects(ConnPane.Projects))
                 {
                     projectNames.Add(p.Name.ToUpper());
                 }
@@ -373,7 +373,8 @@ namespace SolutionPackager
 
         private Project GetProjectByName(string projectName)
         {
-            foreach (Project project in ConnPane.Projects)
+            var projects = SharedWindow.GetProjects(ConnPane.Projects);
+            foreach (Project project in projects)
             {
                 if (project.Name != projectName) continue;
 

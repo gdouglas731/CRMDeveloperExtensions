@@ -16,6 +16,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.ServiceModel;
 using System.Threading.Tasks;
 using System.Windows;
@@ -33,6 +34,8 @@ namespace PluginDeployer
         private readonly Solution _solution;
         private readonly Logger _logger;
         private bool _isIlMergeInstalled;
+
+        const string SolutionFolder = "{66A26720-8FB5-11D2-AA7E-00C04F688DDE}";
 
         public PluginList()
         {
@@ -403,6 +406,8 @@ namespace PluginDeployer
 
             assemblies = HandleMappings(assemblies);
             Assemblies.ItemsSource = assemblies;
+
+
             if (assemblies.Count(a => !string.IsNullOrEmpty(a.BoundProject)) > 0)
                 Assemblies.SelectedItem = assemblies.First(a => !string.IsNullOrEmpty(a.BoundProject));
             Assemblies.IsEnabled = true;
@@ -410,7 +415,7 @@ namespace PluginDeployer
             _dte.StatusBar.Clear();
             _dte.StatusBar.Animate(false, vsStatusAnimation.vsStatusAnimationSync);
             LockOverlay.Visibility = Visibility.Hidden;
-
+            
             return true;
         }
 
@@ -493,10 +498,12 @@ namespace PluginDeployer
                 XmlDocument doc = new XmlDocument();
                 doc.Load(path + "\\CRMDeveloperExtensions.config");
 
-                List<string> projectNames = new List<string>();
-                foreach (Project p in ConnPane.Projects)
+                Dictionary<string, string> projectNamesAndDirectories = new Dictionary<string, string>();
+                                
+                foreach (Project p in SharedWindow.GetProjects(ConnPane.Projects))
                 {
-                    projectNames.Add(p.Name.ToUpper());
+                    var assemblyLocation = GetAssemblyLocation(Directory.GetParent(p.FileName).FullName, p.Name);
+                    projectNamesAndDirectories.Add(p.Name.ToUpper(), assemblyLocation);                    
                 }
 
                 XmlNodeList assemblyNodes = doc.GetElementsByTagName("Assembly");
@@ -517,7 +524,7 @@ namespace PluginDeployer
                         XmlNode projectNameNode = assemblyNode["ProjectName"];
                         if (projectNameNode == null) continue;
 
-                        if (!projectNames.Contains(projectNameNode.InnerText.ToUpper()))
+                        if (!projectNamesAndDirectories.Select(p => p.Key).Contains(projectNameNode.InnerText.ToUpper()))
                             //Remove mappings for projects that might have been deleted from the solution
                             nodesToRemove.Add(projectNameNode);
                         else
@@ -540,11 +547,20 @@ namespace PluginDeployer
                     if (count == 0)
                         nodesToRemove.Add(assembly);
                 }
+                
+                foreach(var item in aItems)
+                {
+                    if (item.AssemblyId == Guid.Empty)
+                        continue;
+                    item.AssemblyLocation = projectNamesAndDirectories
+                        .First(p => p.Key.Equals(item.Name, StringComparison.CurrentCultureIgnoreCase))
+                        .Value;
+                }
 
                 //Remove the invalid mappings
                 if (nodesToRemove.Count <= 0)
-                    return aItems;
-
+                    return aItems;                
+                 
                 XmlNode projects = nodesToRemove[0].ParentNode;
                 foreach (XmlNode xmlNode in nodesToRemove)
                 {
@@ -563,13 +579,33 @@ namespace PluginDeployer
             {
                 _logger.WriteToOutputWindow("Error Updating Mappings In Config File: " + ex.Message + Environment.NewLine + ex.StackTrace, Logger.MessageType.Error);
             }
-
+            
             return aItems;
+        }
+
+        private string GetAssemblyLocation(string path, string assemblyName)
+        {
+            var files = Directory.EnumerateFiles(path, "*.*", SearchOption.AllDirectories);
+            var potentialMatches = files.Where(f => f.EndsWith(assemblyName +".dll"));
+
+            if (!potentialMatches.Any())
+                return null;
+            
+            var assemblies = new Dictionary<string, DateTime>();
+
+            foreach (var assemblyLocation in potentialMatches)
+            {
+                System.IO.FileInfo fileInfo = new System.IO.FileInfo(assemblyLocation);
+                assemblies.Add(assemblyLocation, fileInfo.LastWriteTime);
+            }
+
+            return assemblies.OrderByDescending(a => a.Value).First().Key;
         }
 
         private Project GetProjectByName(string projectName)
         {
-            foreach (Project project in ConnPane.Projects)
+            var projects = SharedWindow.GetProjects(ConnPane.Projects);
+            foreach (Project project in projects)
             {
                 if (project.Name != projectName) continue;
 
@@ -578,7 +614,7 @@ namespace PluginDeployer
 
             return null;
         }
-
+        
         private void Assemblies_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (ConnPane.SelectedProject == null || string.IsNullOrEmpty(ConnPane.SelectedProject.Name)) return;
@@ -594,8 +630,28 @@ namespace PluginDeployer
             item.BoundProject = ConnPane.SelectedProject.Name;
             AddOrUpdateMapping(item);
 
+            if (!item.IsWorkflowActivity)
+            {
+                GetPluginTypes(item);
+            }
+
             Publish.IsEnabled = item.AssemblyId != Guid.Empty;
-            SelectedAssemblyItem.Item = item;
+            SelectedAssemblyItem.Item = item;            
+        }
+
+        private void GetPluginTypes(AssemblyItem item)
+        {
+            // find all classes within selected assembly that inherit IPlugin
+            var assembly = Assembly.ReflectionOnlyLoadFrom(item.AssemblyLocation);
+            try
+            {
+                var types = assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                var types = ex.Types.Where(t => t.Namespace == item.Name);
+                throw;
+            }
         }
 
         private void SelectedAssemblyItem_PropertyChanged(object sender, PropertyChangedEventArgs e)

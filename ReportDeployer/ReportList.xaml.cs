@@ -87,7 +87,7 @@ namespace ReportDeployer
         private void RegisterProjectEvents()
         {
             //Manually register the OnAfterOpenProject event on the existing projects as they are already opened by the time the event would normally be registered
-            foreach (Project project in ConnPane.Projects)
+            foreach (Project project in SharedWindow.GetProjects(ConnPane.Projects))
             {
                 IVsHierarchy projectHierarchy;
                 if (_vsSolution.GetProjectOfUniqueName(project.UniqueName, out projectHierarchy) != VSConstants.S_OK)
@@ -288,7 +288,7 @@ namespace ReportDeployer
 
         private Project GetProjectByName(string projectName)
         {
-            foreach (Project project in ConnPane.Projects)
+            foreach (Project project in SharedWindow.GetProjects(ConnPane.Projects))
             {
                 if (project.Name != projectName) continue;
 
